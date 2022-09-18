@@ -8,11 +8,12 @@ use yew_router::{navigator, prelude::*, switch::_SwitchProps::render};
 pub struct GridProps {
     render_cell: Callback<String, Html>,
 }
+const GRID_SIZE: i32 = 16;
 
 #[function_component]
 fn Grid(props: &GridProps) -> Html {
-    let rows = (0..=16).map(|i| {
-        let cols = (0..=16).map(|j| {
+    let rows = (0..=GRID_SIZE).map(|i| {
+        let cols = (0..=GRID_SIZE).map(|j| {
             let mut key = "".to_owned();
             key.push_str(&i.to_string());
             key.push_str("+");
