@@ -71,11 +71,44 @@ impl Direction {
     }
 }
 
+fn move_left(head: (i32, i32)) -> (i32, i32) {
+    let (r, c) = head.to_owned();
+    (r, c - 1)
+}
+fn move_right(head: (i32, i32)) -> (i32, i32) {
+    let (r, c) = head.to_owned();
+    (r, c + 1)
+}
+fn move_up(head: (i32, i32)) -> (i32, i32) {
+    let (r, c) = head.to_owned();
+    (r - 1, c)
+}
+fn move_down(head: (i32, i32)) -> (i32, i32) {
+    let (r, c) = head.to_owned();
+    (r + 1, c)
+}
+
+fn vec_to_tuple(vec: &Vec<i32>) -> (i32, i32) {
+    (vec[0], vec[1])
+}
+fn tuple_to_vec(tuple: &(i32, i32)) -> Vec<i32> {
+    let mut new: Vec<i32> = vec![];
+    new.push(tuple.0);
+    new.push(tuple.1);
+    new
+}
+
+fn mutate_snake(snake: &mut Vec<Vec<i32>>, newhead: (i32, i32)) -> &mut Vec<Vec<i32>> {
+    snake.remove(0);
+    snake.push(tuple_to_vec(&newhead));
+    snake
+}
+
 #[function_component(App)]
 fn app() -> Html {
     let snake_state = use_state(|| vec![vec![5, 5]]);
     let direction_state = use_state(Direction::default);
-    let interval_speed = 800;
+    let interval_speed = use_state(|| 500);
 
     {
         let direction_state = direction_state.clone();
@@ -85,12 +118,35 @@ fn app() -> Html {
             move |deps| {
                 let (snake, direction) = deps.clone();
                 let snake = snake.clone();
-                let handler = Interval::new(interval_speed, move || match *direction_state {
+                let mut movefn: Box<dyn Fn((i32, i32)) -> (i32, i32)> = Box::new(move_left);
+                let handler = Interval::new(*interval_speed, move || match *direction_state {
                     Direction::LEFT => {
-                        let mut newsnake: Vec<Vec<i32>> = vec![];
-                        for row in snake.iter() {
-                            newsnake.push(vec![row[0], row[1] - 1])
-                        }
+                        movefn = Box::new(move_left);
+                        let prevhead = &(*snake)[snake.len() - 1];
+                        let newhead = move_left(vec_to_tuple(prevhead));
+                        let mut newsnake = snake.to_vec();
+                        mutate_snake(&mut newsnake, newhead);
+                        snake.set(newsnake);
+                    }
+                    Direction::RIGHT => {
+                        let prevhead = &(*snake)[snake.len() - 1];
+                        let newhead = move_right(vec_to_tuple(prevhead));
+                        let mut newsnake = snake.to_vec();
+                        mutate_snake(&mut newsnake, newhead);
+                        snake.set(newsnake);
+                    }
+                    Direction::UP => {
+                        let prevhead = &(*snake)[snake.len() - 1];
+                        let newhead = move_up(vec_to_tuple(prevhead));
+                        let mut newsnake = snake.to_vec();
+                        mutate_snake(&mut newsnake, newhead);
+                        snake.set(newsnake);
+                    }
+                    Direction::DOWN => {
+                        let prevhead = &(*snake)[snake.len() - 1];
+                        let newhead = move_down(vec_to_tuple(prevhead));
+                        let mut newsnake = snake.to_vec();
+                        mutate_snake(&mut newsnake, newhead);
                         snake.set(newsnake);
                     }
                     _ => return,
