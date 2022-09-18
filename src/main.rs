@@ -1,6 +1,7 @@
 use gloo::timers::callback::Interval;
 use gloo::{events::EventListener, utils::window};
 use gloo_console::{console, log};
+use rand::Rng;
 use std::default;
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
 use web_sys::{EventTarget, HtmlElement, HtmlInputElement, UrlSearchParams};
@@ -104,11 +105,19 @@ fn mutate_snake(snake: &mut Vec<Vec<i32>>, newhead: (i32, i32)) -> &mut Vec<Vec<
     snake
 }
 
+fn create_food() -> (i32, i32) {
+    let rand1 = rand::thread_rng().gen_range(0..GRID_SIZE);
+    let rand2 = rand::thread_rng().gen_range(0..GRID_SIZE);
+    (rand1, rand2)
+}
+
 #[function_component(App)]
 fn app() -> Html {
     let snake_state = use_state(|| vec![vec![5, 5]]);
     let direction_state = use_state(Direction::default);
     let interval_speed = use_state(|| 500);
+    let food = use_state(create_food);
+    let foodval = *food;
 
     {
         let direction_state = direction_state.clone();
@@ -118,38 +127,28 @@ fn app() -> Html {
             move |deps| {
                 let (snake, direction) = deps.clone();
                 let snake = snake.clone();
-                let mut movefn: Box<dyn Fn((i32, i32)) -> (i32, i32)> = Box::new(move_left);
-                let handler = Interval::new(*interval_speed, move || match *direction_state {
-                    Direction::LEFT => {
-                        movefn = Box::new(move_left);
-                        let prevhead = &(*snake)[snake.len() - 1];
-                        let newhead = move_left(vec_to_tuple(prevhead));
-                        let mut newsnake = snake.to_vec();
-                        mutate_snake(&mut newsnake, newhead);
-                        snake.set(newsnake);
+                let handler = Interval::new(*interval_speed, move || {
+                    let mut movefn: Box<dyn Fn((i32, i32)) -> (i32, i32)> = Box::new(move_left);
+                    let prevhead = &(*snake)[snake.len() - 1];
+                    let mut newsnake = snake.to_vec();
+                    match *direction_state {
+                        Direction::LEFT => {
+                            movefn = Box::new(move_left);
+                        }
+                        Direction::RIGHT => {
+                            movefn = Box::new(move_right);
+                        }
+                        Direction::UP => {
+                            movefn = Box::new(move_up);
+                        }
+                        Direction::DOWN => {
+                            movefn = Box::new(move_down);
+                        }
+                        _ => return,
                     }
-                    Direction::RIGHT => {
-                        let prevhead = &(*snake)[snake.len() - 1];
-                        let newhead = move_right(vec_to_tuple(prevhead));
-                        let mut newsnake = snake.to_vec();
-                        mutate_snake(&mut newsnake, newhead);
-                        snake.set(newsnake);
-                    }
-                    Direction::UP => {
-                        let prevhead = &(*snake)[snake.len() - 1];
-                        let newhead = move_up(vec_to_tuple(prevhead));
-                        let mut newsnake = snake.to_vec();
-                        mutate_snake(&mut newsnake, newhead);
-                        snake.set(newsnake);
-                    }
-                    Direction::DOWN => {
-                        let prevhead = &(*snake)[snake.len() - 1];
-                        let newhead = move_down(vec_to_tuple(prevhead));
-                        let mut newsnake = snake.to_vec();
-                        mutate_snake(&mut newsnake, newhead);
-                        snake.set(newsnake);
-                    }
-                    _ => return,
+                    let newhead = (*movefn)(vec_to_tuple(prevhead));
+                    mutate_snake(&mut newsnake, newhead);
+                    snake.set(newsnake);
                 });
                 || drop(handler)
             },
@@ -188,8 +187,11 @@ fn app() -> Html {
     }
     let render_cell = Callback::from(move |key: String| {
         let mut class = "col".to_string();
+        let (row, col) = from_key(&key);
         if is_cell_in_snake((*snake_state).clone(), &key) {
             class.push_str(" snake");
+        } else if row == foodval.0 && col == foodval.1 {
+            class.push_str(" food");
         }
 
         html! {

@@ -18,3 +18,7 @@
 .col.snake {
   background-color: black;
 }
+
+.col.food {
+  background-color: purple;
+}
