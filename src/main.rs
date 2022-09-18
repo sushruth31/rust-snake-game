@@ -6,7 +6,7 @@ use yew_router::{navigator, prelude::*, switch::_SwitchProps::render};
 
 #[derive(Properties, PartialEq)]
 pub struct GridProps {
-    on_cell_click: Callback<String>,
+    render_cell: Callback<String, Html>,
 }
 
 #[function_component]
@@ -17,18 +17,7 @@ fn Grid(props: &GridProps) -> Html {
             key.push_str(&i.to_string());
             key.push_str("+");
             key.push_str(&j.to_string());
-            let key_copy = key.clone();
-            let on_cell_click = props.on_cell_click.clone();
-
-            let onclick = Callback::from(move |e: MouseEvent| {
-                let key = key_copy.to_owned();
-                on_cell_click.emit(key);
-            });
-            html! {
-                <div {onclick} class="col">
-                {key}
-                    </div>
-            }
+            props.render_cell.emit(key)
         });
         html! {
             <div class="row">
@@ -45,11 +34,42 @@ fn Grid(props: &GridProps) -> Html {
     }
 }
 
+fn from_key(key: &String) -> (i32, i32) {
+    let split = key.split("+").collect::<Vec<&str>>();
+    let items: Vec<i32> = split
+        .iter()
+        .map(|key| key.to_string().parse::<i32>().unwrap())
+        .collect();
+    (items[0], items[1])
+}
+
+fn is_cell_in_snake(snake: Vec<Vec<i32>>, key: &String) -> bool {
+    let (row, col) = from_key(key);
+    for r in snake.iter() {
+        if r[0] == row && r[1] == col {
+            return true;
+        }
+    }
+    false
+}
+
 #[function_component]
 fn App() -> Html {
-    let on_cell_click = Callback::from(move |key: String| log!(key));
+    let snake_state = use_state(|| vec![vec![5, 5]]);
+    let render_cell = Callback::from(move |key: String| {
+        let mut class = "col".to_string();
+        if is_cell_in_snake((*snake_state).clone(), &key) {
+            class.push_str(" snake");
+        }
+
+        html! {
+            <div {class}>
+            {key}
+                </div>
+        }
+    });
     html! {
-        <Grid {on_cell_click} />
+        <Grid {render_cell} />
     }
 }
 

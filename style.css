@@ -14,3 +14,7 @@
   width: 100px;
   cursor: pointer;
 }
+
+.col.snake {
+  background-color: black;
+}
