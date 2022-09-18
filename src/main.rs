@@ -1,4 +1,8 @@
+use gloo::timers::callback::Interval;
+use gloo::{events::EventListener, utils::window};
 use gloo_console::{console, log};
+use std::default;
+use wasm_bindgen::{JsCast, UnwrapThrowExt};
 use web_sys::{EventTarget, HtmlElement, HtmlInputElement, UrlSearchParams};
 use yew::prelude::*;
 use yew_hooks::prelude::*;
@@ -54,9 +58,78 @@ fn is_cell_in_snake(snake: Vec<Vec<i32>>, key: &String) -> bool {
     false
 }
 
-#[function_component]
-fn App() -> Html {
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum Direction {
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT,
+}
+impl Direction {
+    pub fn default() -> Self {
+        Direction::LEFT
+    }
+}
+
+#[function_component(App)]
+fn app() -> Html {
     let snake_state = use_state(|| vec![vec![5, 5]]);
+    let direction_state = use_state(Direction::default);
+    let interval_speed = 800;
+
+    {
+        let direction_state = direction_state.clone();
+        let d = direction_state.clone();
+        let snake_state = snake_state.clone();
+        use_effect_with_deps(
+            move |deps| {
+                let (snake, direction) = deps.clone();
+                let snake = snake.clone();
+                let handler = Interval::new(interval_speed, move || match *direction_state {
+                    Direction::LEFT => {
+                        let mut newsnake: Vec<Vec<i32>> = vec![];
+                        for row in snake.iter() {
+                            newsnake.push(vec![row[0], row[1] - 1])
+                        }
+                        snake.set(newsnake);
+                    }
+                    _ => return,
+                });
+                || drop(handler)
+            },
+            (snake_state, d),
+        );
+    }
+
+    {
+        use_effect_with_deps(
+            move |_| {
+                let document = gloo::utils::document();
+                let listener = EventListener::new(&document, "keydown", move |e| {
+                    let direction = direction_state.clone();
+                    let e = e.dyn_ref::<web_sys::KeyboardEvent>().unwrap_throw();
+                    let key = e.key();
+                    if key == "Meta".to_string()
+                        || key == "Shift".to_string()
+                        || key == "Escape".to_string()
+                    {
+                        return;
+                    }
+                    if key.contains("Arrow") {
+                        match key.as_str() {
+                            "ArrowRight" => direction.set(Direction::RIGHT),
+                            "ArrowLeft" => direction.set(Direction::LEFT),
+                            "ArrowDown" => direction.set(Direction::DOWN),
+                            "ArrowUp" => direction.set(Direction::UP),
+                            _ => return,
+                        }
+                    }
+                });
+                || drop(listener)
+            },
+            (),
+        );
+    }
     let render_cell = Callback::from(move |key: String| {
         let mut class = "col".to_string();
         if is_cell_in_snake((*snake_state).clone(), &key) {
