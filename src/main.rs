@@ -13,7 +13,7 @@ use yew_router::{navigator, prelude::*, switch::_SwitchProps::render};
 pub struct GridProps {
     render_cell: Callback<String, Html>,
 }
-const GRID_SIZE: i32 = 16;
+const GRID_SIZE: i32 = 10;
 
 #[function_component]
 fn Grid(props: &GridProps) -> Html {
@@ -125,14 +125,16 @@ fn app() -> Html {
     let gameresult: UseStateHandle<Option<GameResult>> = use_state(|| None);
     let result = gameresult.clone();
     let foodval = *food;
+    let direction_queue = use_state(|| vec![Direction::default()]);
 
     {
         let direction_state = direction_state.clone();
         let d = direction_state.clone();
         let snake_state = snake_state.clone();
+        let interval_speed = interval_speed.clone();
         use_effect_with_deps(
             move |deps| {
-                let (snake, direction, gameresult) = deps.clone();
+                let (snake, direction, gameresult, food, interval_speed) = deps.clone();
                 let snake = snake.clone();
                 let handler = Interval::new(*interval_speed, move || {
                     if gameresult.is_some() {
@@ -162,11 +164,31 @@ fn app() -> Html {
                         return gameresult.set(Some(GameResult::LOSE));
                     }
                     mutate_snake(&mut newsnake, newhead);
+                    //check if on food
+                    if tuples_equal(newhead, *food) {
+                        //grow the snake
+                        //get the new tail of the snake
+                        let mut newtail: (i32, i32);
+                        let oldtail = newsnake[0];
+                        match *direction {
+                            Direction::DOWN => newtail = (oldtail.0 - 1, oldtail.1),
+                            Direction::LEFT => newtail = (oldtail.0, oldtail.1 + 1),
+                            Direction::UP => newtail = (oldtail.0 + 1, oldtail.1),
+                            Direction::RIGHT => newtail = (oldtail.0, oldtail.1 - 1),
+                        }
+                        newsnake.insert(0, newtail);
+                        food.set(create_food());
+                        if *interval_speed > 200 {
+                            interval_speed.set(*interval_speed - 100);
+                        }
+                        //increase speed
+                    }
                     snake.set(newsnake);
+                    //update food;
                 });
                 || drop(handler)
             },
-            (snake_state, d, gameresult),
+            (snake_state, d, gameresult, food, interval_speed),
         );
     }
 
@@ -231,6 +253,17 @@ fn app() -> Html {
 
 fn is_out_of_bounds(head: &(i32, i32)) -> bool {
     head.0 < 0 || head.1 < 0 || head.0 >= GRID_SIZE || head.1 >= GRID_SIZE
+}
+
+fn tuples_equal(t1: (i32, i32), t2: (i32, i32)) -> bool {
+    let a1 = tuple_to_vec(&t1);
+    let a2 = tuple_to_vec(&t2);
+    for num in a1 {
+        if !a2.contains(&num) {
+            return false;
+        }
+    }
+    true
 }
 
 fn main() {

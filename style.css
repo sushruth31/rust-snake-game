@@ -2,7 +2,7 @@
   display: flex;
   align-items: center;
   border-bottom: 1px solid grey;
-  height: 100px;
+  height: 70px;
 }
 
 .col {
@@ -10,8 +10,8 @@
   border: 1px solid grey;
   align-items: center;
   justify-content: center;
-  height: 100px;
-  width: 100px;
+  height: 70px;
+  width: 70px;
   cursor: pointer;
 }
 
