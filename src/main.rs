@@ -1,10 +1,8 @@
 use gloo::timers::callback::Interval;
 use gloo::{events::EventListener, utils::window};
-use gloo_console::{console, log};
 use rand::Rng;
-use std::default;
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
-use web_sys::{EventTarget, HtmlElement, HtmlInputElement, UrlSearchParams};
+use web_sys::{console, EventTarget, HtmlElement, HtmlInputElement, UrlSearchParams};
 use yew::prelude::*;
 use yew_hooks::prelude::*;
 use yew_router::{navigator, prelude::*, switch::_SwitchProps::render};
@@ -17,8 +15,8 @@ const GRID_SIZE: i32 = 10;
 
 #[function_component]
 fn Grid(props: &GridProps) -> Html {
-    let rows = (0..=GRID_SIZE).map(|i| {
-        let cols = (0..=GRID_SIZE).map(|j| {
+    let rows = (0..GRID_SIZE).map(|i| {
+        let cols = (0..GRID_SIZE).map(|j| {
             let mut key = "".to_owned();
             key.push_str(&i.to_string());
             key.push_str("+");
@@ -104,10 +102,29 @@ fn mutate_snake(snake: &mut Vec<(i32, i32)>, newhead: (i32, i32)) -> &mut Vec<(i
     snake
 }
 
-fn create_food() -> (i32, i32) {
-    let rand1 = rand::thread_rng().gen_range(0..GRID_SIZE);
-    let rand2 = rand::thread_rng().gen_range(0..GRID_SIZE);
-    (rand1, rand2)
+fn create_food(snake: Vec<(i32, i32)>) -> (i32, i32) {
+    let mut result: Option<(i32, i32)> = None;
+
+    loop {
+        let snake = snake.to_vec();
+        let rand1 = rand::thread_rng().gen_range(0..GRID_SIZE);
+        let rand2 = rand::thread_rng().gen_range(0..GRID_SIZE);
+        for tuple in snake {
+            if rand1 != tuple.0 || rand2 != tuple.1 {
+                result = Some((rand1, rand2));
+                break;
+            }
+        }
+        match result {
+            Some(_) => {
+                break;
+            }
+            None => {
+                continue;
+            }
+        }
+    }
+    result.unwrap()
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -120,13 +137,15 @@ enum GameResult {
 fn app() -> Html {
     let snake_state: UseStateHandle<Vec<(i32, i32)>> = use_state(|| vec![(5, 5)]);
     let interval_speed = use_state(|| 500);
-    let food = use_state(create_food);
+    let food = use_state(|| create_food(snake_state.to_vec()));
     let gameresult: UseStateHandle<Option<GameResult>> = use_state(|| None);
     let result = gameresult.clone();
     let foodval = *food;
     let direction_queue = use_state(|| vec![Direction::default()]);
+    let last_direction = use_mut_ref(Direction::default);
 
     {
+        let last_direction = last_direction.clone();
         let snake_state = snake_state.clone();
         let interval_speed = interval_speed.clone();
         let direction_queue = direction_queue.clone();
@@ -140,14 +159,17 @@ fn app() -> Html {
                     }
                     let mut mutablequeue = direction_queue.to_vec();
                     let mut addfood: bool = false;
+                    let mut newsnake = snake.to_vec();
+
                     loop {
+                        let mut newsnake = newsnake.clone();
                         if mutablequeue.is_empty() {
                             break;
                         }
                         let newdirection = mutablequeue.remove(0);
+                        //web_sys::console::log_1(&format!("{newdirection:#?}").into());
                         let mut movefn: Box<dyn Fn((i32, i32)) -> (i32, i32)> = Box::new(move_left);
                         let prevhead = &(*snake)[snake.len() - 1];
-                        let mut newsnake = snake.to_vec();
                         match newdirection {
                             Direction::LEFT => {
                                 movefn = Box::new(move_left);
@@ -185,7 +207,7 @@ fn app() -> Html {
                             }
                             newsnake.insert(0, newtail);
                             addfood = true;
-                            if *interval_speed > 200 {
+                            if *interval_speed > 101 {
                                 interval_speed.set(*interval_speed - 100);
                             }
                             //increase speed
@@ -193,7 +215,7 @@ fn app() -> Html {
                         snake.set(newsnake);
                     }
                     if addfood {
-                        food.set(create_food());
+                        food.set(create_food(newsnake));
                     }
                 });
                 || drop(handler)
@@ -209,6 +231,7 @@ fn app() -> Html {
     }
 
     {
+        let last_direction = last_direction.clone();
         use_effect_with_deps(
             move |_| {
                 let document = gloo::utils::document();
@@ -228,20 +251,24 @@ fn app() -> Html {
                             "ArrowRight" => {
                                 queue.push(Direction::RIGHT);
                                 direction_queue.set(queue);
+                                *last_direction.borrow_mut() = Direction::RIGHT;
                             }
                             "ArrowLeft" => {
                                 queue.push(Direction::LEFT);
                                 direction_queue.set(queue);
+                                *last_direction.borrow_mut() = Direction::LEFT;
                             }
 
                             "ArrowDown" => {
                                 queue.push(Direction::DOWN);
                                 direction_queue.set(queue);
+                                *last_direction.borrow_mut() = Direction::DOWN;
                             }
 
                             "ArrowUp" => {
                                 queue.push(Direction::UP);
                                 direction_queue.set(queue);
+                                *last_direction.borrow_mut() = Direction::UP;
                             }
                             _ => return,
                         }
@@ -283,7 +310,8 @@ fn app() -> Html {
 }
 
 fn is_out_of_bounds(head: &(i32, i32)) -> bool {
-    head.0 < 0 || head.1 < 0 || head.0 >= GRID_SIZE || head.1 >= GRID_SIZE
+    let (r, c) = head.to_owned();
+    r < -1 || r >= GRID_SIZE || c < -1 || c >= GRID_SIZE
 }
 
 fn tuples_equal(t1: (i32, i32), t2: (i32, i32)) -> bool {
@@ -295,6 +323,22 @@ fn tuples_equal(t1: (i32, i32), t2: (i32, i32)) -> bool {
         }
     }
     true
+}
+
+fn are_opposite_directions(d1: Direction, d2: Direction) -> bool {
+    if d1 == Direction::DOWN && d2 == Direction::UP {
+        return true;
+    }
+    if d1 == Direction::UP && d2 == Direction::DOWN {
+        return true;
+    }
+    if d1 == Direction::LEFT && d2 == Direction::RIGHT {
+        return true;
+    }
+    if d1 == Direction::RIGHT && d2 == Direction::LEFT {
+        return true;
+    }
+    false
 }
 
 fn main() {
