@@ -110,21 +110,20 @@ fn create_food(snake: Vec<(i32, i32)>) -> (i32, i32) {
         let rand1 = rand::thread_rng().gen_range(0..GRID_SIZE);
         let rand2 = rand::thread_rng().gen_range(0..GRID_SIZE);
         for tuple in snake {
-            if rand1 != tuple.0 || rand2 != tuple.1 {
-                result = Some((rand1, rand2));
-                break;
+            if tuple.0 == rand1 && tuple.1 == rand2 {
+                continue;
             }
+            result = Some((rand1, rand2));
         }
         match result {
-            Some(_) => {
-                break;
+            Some(val) => {
+                return val;
             }
             None => {
                 continue;
             }
         }
     }
-    result.unwrap()
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -315,14 +314,7 @@ fn is_out_of_bounds(head: &(i32, i32)) -> bool {
 }
 
 fn tuples_equal(t1: (i32, i32), t2: (i32, i32)) -> bool {
-    let a1 = tuple_to_vec(&t1);
-    let a2 = tuple_to_vec(&t2);
-    for num in a1 {
-        if !a2.contains(&num) {
-            return false;
-        }
-    }
-    true
+    t1.0 == t2.0 && t1.1 == t2.1
 }
 
 fn are_opposite_directions(d1: Direction, d2: Direction) -> bool {
