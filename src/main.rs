@@ -119,7 +119,6 @@ enum GameResult {
 #[function_component(App)]
 fn app() -> Html {
     let snake_state: UseStateHandle<Vec<(i32, i32)>> = use_state(|| vec![(5, 5)]);
-    let direction_state = use_state(Direction::default);
     let interval_speed = use_state(|| 500);
     let food = use_state(create_food);
     let gameresult: UseStateHandle<Option<GameResult>> = use_state(|| None);
@@ -128,67 +127,84 @@ fn app() -> Html {
     let direction_queue = use_state(|| vec![Direction::default()]);
 
     {
-        let direction_state = direction_state.clone();
-        let d = direction_state.clone();
         let snake_state = snake_state.clone();
         let interval_speed = interval_speed.clone();
+        let direction_queue = direction_queue.clone();
         use_effect_with_deps(
             move |deps| {
-                let (snake, direction, gameresult, food, interval_speed) = deps.clone();
+                let (snake, gameresult, food, interval_speed, direction_queue) = deps.clone();
                 let snake = snake.clone();
                 let handler = Interval::new(*interval_speed, move || {
                     if gameresult.is_some() {
                         return;
                     }
-                    let mut movefn: Box<dyn Fn((i32, i32)) -> (i32, i32)> = Box::new(move_left);
-                    let prevhead = &(*snake)[snake.len() - 1];
-                    let mut newsnake = snake.to_vec();
-                    match *direction_state {
-                        Direction::LEFT => {
-                            movefn = Box::new(move_left);
+                    let mut mutablequeue = direction_queue.to_vec();
+                    let mut addfood: bool = false;
+                    loop {
+                        if mutablequeue.is_empty() {
+                            break;
                         }
-                        Direction::RIGHT => {
-                            movefn = Box::new(move_right);
+                        let newdirection = mutablequeue.remove(0);
+                        let mut movefn: Box<dyn Fn((i32, i32)) -> (i32, i32)> = Box::new(move_left);
+                        let prevhead = &(*snake)[snake.len() - 1];
+                        let mut newsnake = snake.to_vec();
+                        match newdirection {
+                            Direction::LEFT => {
+                                movefn = Box::new(move_left);
+                            }
+                            Direction::RIGHT => {
+                                movefn = Box::new(move_right);
+                            }
+                            Direction::UP => {
+                                movefn = Box::new(move_up);
+                            }
+                            Direction::DOWN => {
+                                movefn = Box::new(move_down);
+                            }
+                            _ => return,
                         }
-                        Direction::UP => {
-                            movefn = Box::new(move_up);
+                        let newhead = (*movefn)(*prevhead);
+                        //check if snake is out of bounds
+                        if is_out_of_bounds(&newhead) {
+                            snake.set(newsnake);
+                            return gameresult.set(Some(GameResult::LOSE));
                         }
-                        Direction::DOWN => {
-                            movefn = Box::new(move_down);
+                        mutate_snake(&mut newsnake, newhead);
+
+                        //check if on food
+                        if tuples_equal(newhead, *food) {
+                            //grow the snake
+                            //get the new tail of the snake
+                            let mut newtail: (i32, i32);
+                            let oldtail = newsnake[0];
+                            match newdirection {
+                                Direction::DOWN => newtail = (oldtail.0 - 1, oldtail.1),
+                                Direction::LEFT => newtail = (oldtail.0, oldtail.1 + 1),
+                                Direction::UP => newtail = (oldtail.0 + 1, oldtail.1),
+                                Direction::RIGHT => newtail = (oldtail.0, oldtail.1 - 1),
+                            }
+                            newsnake.insert(0, newtail);
+                            addfood = true;
+                            if *interval_speed > 200 {
+                                interval_speed.set(*interval_speed - 100);
+                            }
+                            //increase speed
                         }
-                        _ => return,
+                        snake.set(newsnake);
                     }
-                    let newhead = (*movefn)(*prevhead);
-                    //check if snake is out of bounds
-                    if is_out_of_bounds(&newhead) {
-                        return gameresult.set(Some(GameResult::LOSE));
-                    }
-                    mutate_snake(&mut newsnake, newhead);
-                    //check if on food
-                    if tuples_equal(newhead, *food) {
-                        //grow the snake
-                        //get the new tail of the snake
-                        let mut newtail: (i32, i32);
-                        let oldtail = newsnake[0];
-                        match *direction {
-                            Direction::DOWN => newtail = (oldtail.0 - 1, oldtail.1),
-                            Direction::LEFT => newtail = (oldtail.0, oldtail.1 + 1),
-                            Direction::UP => newtail = (oldtail.0 + 1, oldtail.1),
-                            Direction::RIGHT => newtail = (oldtail.0, oldtail.1 - 1),
-                        }
-                        newsnake.insert(0, newtail);
+                    if addfood {
                         food.set(create_food());
-                        if *interval_speed > 200 {
-                            interval_speed.set(*interval_speed - 100);
-                        }
-                        //increase speed
                     }
-                    snake.set(newsnake);
-                    //update food;
                 });
                 || drop(handler)
             },
-            (snake_state, d, gameresult, food, interval_speed),
+            (
+                snake_state,
+                gameresult,
+                food,
+                interval_speed,
+                direction_queue,
+            ),
         );
     }
 
@@ -197,7 +213,8 @@ fn app() -> Html {
             move |_| {
                 let document = gloo::utils::document();
                 let listener = EventListener::new(&document, "keydown", move |e| {
-                    let direction = direction_state.clone();
+                    let direction_queue = direction_queue.clone();
+                    let mut queue = direction_queue.to_vec();
                     let e = e.dyn_ref::<web_sys::KeyboardEvent>().unwrap_throw();
                     let key = e.key();
                     if key == "Meta".to_string()
@@ -208,10 +225,24 @@ fn app() -> Html {
                     }
                     if key.contains("Arrow") {
                         match key.as_str() {
-                            "ArrowRight" => direction.set(Direction::RIGHT),
-                            "ArrowLeft" => direction.set(Direction::LEFT),
-                            "ArrowDown" => direction.set(Direction::DOWN),
-                            "ArrowUp" => direction.set(Direction::UP),
+                            "ArrowRight" => {
+                                queue.push(Direction::RIGHT);
+                                direction_queue.set(queue);
+                            }
+                            "ArrowLeft" => {
+                                queue.push(Direction::LEFT);
+                                direction_queue.set(queue);
+                            }
+
+                            "ArrowDown" => {
+                                queue.push(Direction::DOWN);
+                                direction_queue.set(queue);
+                            }
+
+                            "ArrowUp" => {
+                                queue.push(Direction::UP);
+                                direction_queue.set(queue);
+                            }
                             _ => return,
                         }
                     }
