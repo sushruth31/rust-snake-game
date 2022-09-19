@@ -33,10 +33,9 @@ fn Grid(props: &GridProps) -> Html {
     });
 
     html! {
-        <div>
-            <h1>{"Welcome to Snake!"}</h1>
+        <>
             {for rows}
-        </div>
+        </>
     }
 }
 
@@ -49,10 +48,10 @@ fn from_key(key: &String) -> (i32, i32) {
     (items[0], items[1])
 }
 
-fn is_cell_in_snake(snake: Vec<Vec<i32>>, key: &String) -> bool {
+fn is_cell_in_snake(snake: Vec<(i32, i32)>, key: &String) -> bool {
     let (row, col) = from_key(key);
     for r in snake.iter() {
-        if r[0] == row && r[1] == col {
+        if r.0 == row && r.1 == col {
             return true;
         }
     }
@@ -99,9 +98,9 @@ fn tuple_to_vec(tuple: &(i32, i32)) -> Vec<i32> {
     new
 }
 
-fn mutate_snake(snake: &mut Vec<Vec<i32>>, newhead: (i32, i32)) -> &mut Vec<Vec<i32>> {
+fn mutate_snake(snake: &mut Vec<(i32, i32)>, newhead: (i32, i32)) -> &mut Vec<(i32, i32)> {
     snake.remove(0);
-    snake.push(tuple_to_vec(&newhead));
+    snake.push(newhead);
     snake
 }
 
@@ -111,12 +110,20 @@ fn create_food() -> (i32, i32) {
     (rand1, rand2)
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum GameResult {
+    WIN,
+    LOSE,
+}
+
 #[function_component(App)]
 fn app() -> Html {
-    let snake_state = use_state(|| vec![vec![5, 5]]);
+    let snake_state: UseStateHandle<Vec<(i32, i32)>> = use_state(|| vec![(5, 5)]);
     let direction_state = use_state(Direction::default);
     let interval_speed = use_state(|| 500);
     let food = use_state(create_food);
+    let gameresult: UseStateHandle<Option<GameResult>> = use_state(|| None);
+    let result = gameresult.clone();
     let foodval = *food;
 
     {
@@ -125,9 +132,12 @@ fn app() -> Html {
         let snake_state = snake_state.clone();
         use_effect_with_deps(
             move |deps| {
-                let (snake, direction) = deps.clone();
+                let (snake, direction, gameresult) = deps.clone();
                 let snake = snake.clone();
                 let handler = Interval::new(*interval_speed, move || {
+                    if gameresult.is_some() {
+                        return;
+                    }
                     let mut movefn: Box<dyn Fn((i32, i32)) -> (i32, i32)> = Box::new(move_left);
                     let prevhead = &(*snake)[snake.len() - 1];
                     let mut newsnake = snake.to_vec();
@@ -146,13 +156,17 @@ fn app() -> Html {
                         }
                         _ => return,
                     }
-                    let newhead = (*movefn)(vec_to_tuple(prevhead));
+                    let newhead = (*movefn)(*prevhead);
+                    //check if snake is out of bounds
+                    if is_out_of_bounds(&newhead) {
+                        return gameresult.set(Some(GameResult::LOSE));
+                    }
                     mutate_snake(&mut newsnake, newhead);
                     snake.set(newsnake);
                 });
                 || drop(handler)
             },
-            (snake_state, d),
+            (snake_state, d, gameresult),
         );
     }
 
@@ -201,8 +215,22 @@ fn app() -> Html {
         }
     });
     html! {
-        <Grid {render_cell} />
+        <>
+            <h1>{"Welcome to Snake!"}</h1>
+            if let Some(result) = *result{
+                if result == GameResult::LOSE {
+                    <h1>{"You lose"}</h1>
+                } else {
+                    <h1>{"You Win"}</h1>
+                }
+            }
+            <Grid {render_cell} />
+            </>
     }
+}
+
+fn is_out_of_bounds(head: &(i32, i32)) -> bool {
+    head.0 < 0 || head.1 < 0 || head.0 >= GRID_SIZE || head.1 >= GRID_SIZE
 }
 
 fn main() {
