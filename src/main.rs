@@ -106,11 +106,10 @@ fn create_food(snake: Vec<(i32, i32)>) -> (i32, i32) {
     let mut result: Option<(i32, i32)> = None;
 
     loop {
-        let snake = snake.to_vec();
         let rand1 = rand::thread_rng().gen_range(0..GRID_SIZE);
         let rand2 = rand::thread_rng().gen_range(0..GRID_SIZE);
         let attempt = (rand1, rand2);
-        for tuple in snake {
+        for tuple in snake.to_vec() {
             if tuples_equal(tuple, attempt) {
                 continue;
             }
