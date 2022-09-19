@@ -109,11 +109,12 @@ fn create_food(snake: Vec<(i32, i32)>) -> (i32, i32) {
         let snake = snake.to_vec();
         let rand1 = rand::thread_rng().gen_range(0..GRID_SIZE);
         let rand2 = rand::thread_rng().gen_range(0..GRID_SIZE);
+        let attempt = (rand1, rand2);
         for tuple in snake {
-            if tuple.0 == rand1 && tuple.1 == rand2 {
+            if tuples_equal(tuple, attempt) {
                 continue;
             }
-            result = Some((rand1, rand2));
+            result = Some(attempt);
         }
         match result {
             Some(val) => {
