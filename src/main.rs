@@ -17,7 +17,7 @@ const GRID_SIZE: i32 = 10;
 fn Grid(props: &GridProps) -> Html {
     let rows = (0..GRID_SIZE).map(|i| {
         let cols = (0..GRID_SIZE).map(|j| {
-            let mut key = "".to_owned();
+            let mut key = "".to_string();
             key.push_str(&i.to_string());
             key.push_str("+");
             key.push_str(&j.to_string());
@@ -46,7 +46,7 @@ fn from_key(key: &String) -> (i32, i32) {
     (items[0], items[1])
 }
 
-fn is_cell_in_snake(snake: Vec<(i32, i32)>, key: &String) -> bool {
+fn is_cell_in_snake(snake: &Vec<(i32, i32)>, key: &String) -> bool {
     let (row, col) = from_key(key);
     for r in snake.iter() {
         if r.0 == row && r.1 == col {
@@ -84,16 +84,6 @@ fn move_up(head: (i32, i32)) -> (i32, i32) {
 fn move_down(head: (i32, i32)) -> (i32, i32) {
     let (r, c) = head.to_owned();
     (r + 1, c)
-}
-
-fn vec_to_tuple(vec: &Vec<i32>) -> (i32, i32) {
-    (vec[0], vec[1])
-}
-fn tuple_to_vec(tuple: &(i32, i32)) -> Vec<i32> {
-    let mut new: Vec<i32> = vec![];
-    new.push(tuple.0);
-    new.push(tuple.1);
-    new
 }
 
 fn mutate_snake(snake: &mut Vec<(i32, i32)>, newhead: (i32, i32)) -> &mut Vec<(i32, i32)> {
@@ -185,7 +175,7 @@ fn app() -> Html {
                     mutate_snake(&mut newsnake, newhead);
 
                     //check if on itself
-                    if is_snake_in_itself(&newhead, &newsnake) {
+                    if is_snake_in_itself(&newsnake) {
                         return gameresult.set(Some(GameResult::LOSE));
                     }
 
@@ -310,10 +300,10 @@ fn app() -> Html {
     });
     let render_cell = Callback::from(move |key: String| {
         let mut class = "col".to_string();
-        let (row, col) = from_key(&key);
-        if is_cell_in_snake((*snake_state).clone(), &key) {
+        let keyvals = from_key(&key);
+        if is_cell_in_snake(&snake_state, &key) {
             class.push_str(" snake");
-        } else if row == foodval.0 && col == foodval.1 {
+        } else if tuples_equal(&keyvals, &foodval) {
             class.push_str(" food");
         }
 
@@ -348,19 +338,14 @@ fn tuples_equal(t1: &(i32, i32), t2: &(i32, i32)) -> bool {
     t1.0 == t2.0 && t1.1 == t2.1
 }
 
-fn is_snake_in_itself(head: &(i32, i32), snake: &Vec<(i32, i32)>) -> bool {
+fn is_snake_in_itself(snake: &Vec<(i32, i32)>) -> bool {
     //remove head
-    let scopy: Vec<(i32, i32)> = snake
-        .to_vec()
-        .into_iter()
-        .filter(|tup| !tuples_equal(tup, head))
-        .collect();
-
-    //    web_sys::console::log_1(&format!("{scopy:#?}").into());
-
-    for tup in scopy.iter() {
-        if tuples_equal(tup, head) {
-            return true;
+    let len = snake.len();
+    for i in 0..len {
+        for j in i + 1..len {
+            if tuples_equal(&snake[i], &snake[j]) {
+                return true;
+            }
         }
     }
     false
