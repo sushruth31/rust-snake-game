@@ -110,7 +110,7 @@ fn create_food(snake: Vec<(i32, i32)>) -> (i32, i32) {
         let rand2 = rand::thread_rng().gen_range(0..GRID_SIZE);
         let attempt = (rand1, rand2);
         for tuple in snake.to_vec() {
-            if tuples_equal(tuple, attempt) {
+            if tuples_equal(&tuple, &attempt) {
                 continue;
             }
             result = Some(attempt);
@@ -140,82 +140,94 @@ fn app() -> Html {
     let gameresult: UseStateHandle<Option<GameResult>> = use_state(|| None);
     let result = gameresult.clone();
     let foodval = *food;
-    let direction_queue = use_state(|| vec![Direction::default()]);
-    let last_direction = use_mut_ref(Direction::default);
+    let direction_state = use_state(Direction::default);
+    let game_started = use_state(|| false);
+    let game_started_clone = game_started.clone();
 
     {
-        let last_direction = last_direction.clone();
         let snake_state = snake_state.clone();
         let interval_speed = interval_speed.clone();
-        let direction_queue = direction_queue.clone();
+        let direction_state = direction_state.clone();
+        let gameresult = gameresult.clone();
+        let game_started = game_started.clone();
         use_effect_with_deps(
             move |deps| {
-                let (snake, gameresult, food, interval_speed, direction_queue) = deps.clone();
-                let snake = snake.clone();
+                let (snake, gameresult, food, interval_speed, direction_state, game_started) =
+                    deps.clone();
                 let handler = Interval::new(*interval_speed, move || {
-                    if gameresult.is_some() {
+                    if gameresult.is_some() || !*game_started {
                         return;
                     }
-                    let mut mutablequeue = direction_queue.to_vec();
-                    let mut addfood: bool = false;
+                    //web_sys::console::log_1(&format!("{newdirection:#?}").into());
+                    let mut movefn: Box<dyn Fn((i32, i32)) -> (i32, i32)> = Box::new(move_left);
+                    let prevhead = &(*snake)[snake.len() - 1];
+                    match *direction_state {
+                        Direction::LEFT => {
+                            movefn = Box::new(move_left);
+                        }
+                        Direction::RIGHT => {
+                            movefn = Box::new(move_right);
+                        }
+                        Direction::UP => {
+                            movefn = Box::new(move_up);
+                        }
+                        Direction::DOWN => {
+                            movefn = Box::new(move_down);
+                        }
+                    }
+                    let newhead = (*movefn)(*prevhead);
                     let mut newsnake = snake.to_vec();
-
-                    loop {
-                        let mut newsnake = newsnake.clone();
-                        if mutablequeue.is_empty() {
-                            break;
-                        }
-                        let newdirection = mutablequeue.remove(0);
-                        //web_sys::console::log_1(&format!("{newdirection:#?}").into());
-                        let mut movefn: Box<dyn Fn((i32, i32)) -> (i32, i32)> = Box::new(move_left);
-                        let prevhead = &(*snake)[snake.len() - 1];
-                        match newdirection {
-                            Direction::LEFT => {
-                                movefn = Box::new(move_left);
-                            }
-                            Direction::RIGHT => {
-                                movefn = Box::new(move_right);
-                            }
-                            Direction::UP => {
-                                movefn = Box::new(move_up);
-                            }
-                            Direction::DOWN => {
-                                movefn = Box::new(move_down);
-                            }
-                            _ => return,
-                        }
-                        let newhead = (*movefn)(*prevhead);
-                        //check if snake is out of bounds
-                        if is_out_of_bounds(&newhead) {
-                            snake.set(newsnake);
-                            return gameresult.set(Some(GameResult::LOSE));
-                        }
-                        mutate_snake(&mut newsnake, newhead);
-
-                        //check if on food
-                        if tuples_equal(newhead, *food) {
-                            //grow the snake
-                            //get the new tail of the snake
-                            let mut newtail: (i32, i32);
-                            let oldtail = newsnake[0];
-                            match newdirection {
-                                Direction::DOWN => newtail = (oldtail.0 - 1, oldtail.1),
-                                Direction::LEFT => newtail = (oldtail.0, oldtail.1 + 1),
-                                Direction::UP => newtail = (oldtail.0 + 1, oldtail.1),
-                                Direction::RIGHT => newtail = (oldtail.0, oldtail.1 - 1),
-                            }
-                            newsnake.insert(0, newtail);
-                            addfood = true;
-                            if *interval_speed > 101 {
-                                interval_speed.set(*interval_speed - 100);
-                            }
-                            //increase speed
-                        }
+                    //check if snake is out of bounds
+                    if is_out_of_bounds(&newhead) {
                         snake.set(newsnake);
+                        return gameresult.set(Some(GameResult::LOSE));
                     }
-                    if addfood {
-                        food.set(create_food(newsnake));
+                    mutate_snake(&mut newsnake, newhead);
+
+                    //check if on itself
+                    if is_snake_in_itself(&newhead, &newsnake) {
+                        return gameresult.set(Some(GameResult::LOSE));
                     }
+
+                    //check if on food
+                    if tuples_equal(&newhead, &*food) {
+                        //grow the snake
+                        //get the new tail of the snake
+                        let newtail: (i32, i32);
+                        let tail = snake[0];
+                        //this should be based on the position of the second el not the direction
+                        //if length is 1 add based on direction
+                        if snake.to_vec().len() == 1 {
+                            match *direction_state {
+                                Direction::DOWN => newtail = (tail.0 - 1, tail.1),
+                                Direction::UP => newtail = (tail.0 + 1, tail.1),
+                                Direction::LEFT => newtail = (tail.0, tail.1 + 1),
+                                Direction::RIGHT => newtail = (tail.0, tail.1 - 1),
+                            }
+                        } else {
+                            let compare = newsnake[1];
+                            //add based on second to last pos
+                            //check if compare is to left
+                            if compare.1 < tail.1 {
+                                //add left
+                                newtail = (tail.0, tail.1 - 1);
+                            } else if compare.1 > tail.1 {
+                                newtail = (tail.0, tail.1 + 1);
+                            } else if compare.0 > tail.0 {
+                                newtail = (tail.0 - 1, tail.1);
+                            } else {
+                                newtail = (tail.0 + 1, tail.1);
+                            }
+                        }
+
+                        newsnake.insert(0, newtail);
+                        food.set(create_food(newsnake.to_vec()));
+                        if *interval_speed > 101 {
+                            interval_speed.set(*interval_speed - 100);
+                        }
+                        //increase speed
+                    }
+                    snake.set(newsnake);
                 });
                 || drop(handler)
             },
@@ -224,19 +236,21 @@ fn app() -> Html {
                 gameresult,
                 food,
                 interval_speed,
-                direction_queue,
+                direction_state,
+                game_started,
             ),
         );
     }
 
     {
-        let last_direction = last_direction.clone();
+        let direction_state = direction_state.clone();
+        let game_result = gameresult.clone();
+        let snake_state = snake_state.clone();
         use_effect_with_deps(
-            move |_| {
+            move |snake_state| {
+                let snake_state = snake_state.clone();
                 let document = gloo::utils::document();
                 let listener = EventListener::new(&document, "keydown", move |e| {
-                    let direction_queue = direction_queue.clone();
-                    let mut queue = direction_queue.to_vec();
                     let e = e.dyn_ref::<web_sys::KeyboardEvent>().unwrap_throw();
                     let key = e.key();
                     if key == "Meta".to_string()
@@ -246,28 +260,41 @@ fn app() -> Html {
                         return;
                     }
                     if key.contains("Arrow") {
+                        //check prev direction here to make sure its valid
                         match key.as_str() {
                             "ArrowRight" => {
-                                queue.push(Direction::RIGHT);
-                                direction_queue.set(queue);
-                                *last_direction.borrow_mut() = Direction::RIGHT;
+                                if *direction_state == Direction::LEFT
+                                    && snake_state.to_vec().len() > 1
+                                {
+                                    return game_result.set(Some(GameResult::LOSE));
+                                }
+                                direction_state.set(Direction::RIGHT);
                             }
                             "ArrowLeft" => {
-                                queue.push(Direction::LEFT);
-                                direction_queue.set(queue);
-                                *last_direction.borrow_mut() = Direction::LEFT;
+                                if *direction_state == Direction::RIGHT
+                                    && snake_state.to_vec().len() > 1
+                                {
+                                    return game_result.set(Some(GameResult::LOSE));
+                                }
+                                direction_state.set(Direction::LEFT);
                             }
 
                             "ArrowDown" => {
-                                queue.push(Direction::DOWN);
-                                direction_queue.set(queue);
-                                *last_direction.borrow_mut() = Direction::DOWN;
+                                if *direction_state == Direction::UP
+                                    && snake_state.to_vec().len() > 1
+                                {
+                                    return game_result.set(Some(GameResult::LOSE));
+                                }
+                                direction_state.set(Direction::DOWN);
                             }
 
                             "ArrowUp" => {
-                                queue.push(Direction::UP);
-                                direction_queue.set(queue);
-                                *last_direction.borrow_mut() = Direction::UP;
+                                if *direction_state == Direction::DOWN
+                                    && snake_state.to_vec().len() > 1
+                                {
+                                    return game_result.set(Some(GameResult::LOSE));
+                                }
+                                direction_state.set(Direction::UP);
                             }
                             _ => return,
                         }
@@ -275,9 +302,12 @@ fn app() -> Html {
                 });
                 || drop(listener)
             },
-            (),
+            snake_state,
         );
     }
+    let start_game = Callback::from(move |_: MouseEvent| {
+        game_started_clone.set(!*game_started_clone);
+    });
     let render_cell = Callback::from(move |key: String| {
         let mut class = "col".to_string();
         let (row, col) = from_key(&key);
@@ -296,6 +326,7 @@ fn app() -> Html {
     html! {
         <>
             <h1>{"Welcome to Snake!"}</h1>
+            <button onclick={start_game}>{if *game_started {"Pause"} else {"Start"}}</button>
             if let Some(result) = *result{
                 if result == GameResult::LOSE {
                     <h1>{"You lose"}</h1>
@@ -313,22 +344,24 @@ fn is_out_of_bounds(head: &(i32, i32)) -> bool {
     r < -1 || r >= GRID_SIZE || c < -1 || c >= GRID_SIZE
 }
 
-fn tuples_equal(t1: (i32, i32), t2: (i32, i32)) -> bool {
+fn tuples_equal(t1: &(i32, i32), t2: &(i32, i32)) -> bool {
     t1.0 == t2.0 && t1.1 == t2.1
 }
 
-fn are_opposite_directions(d1: Direction, d2: Direction) -> bool {
-    if d1 == Direction::DOWN && d2 == Direction::UP {
-        return true;
-    }
-    if d1 == Direction::UP && d2 == Direction::DOWN {
-        return true;
-    }
-    if d1 == Direction::LEFT && d2 == Direction::RIGHT {
-        return true;
-    }
-    if d1 == Direction::RIGHT && d2 == Direction::LEFT {
-        return true;
+fn is_snake_in_itself(head: &(i32, i32), snake: &Vec<(i32, i32)>) -> bool {
+    //remove head
+    let scopy: Vec<(i32, i32)> = snake
+        .to_vec()
+        .into_iter()
+        .filter(|tup| !tuples_equal(tup, head))
+        .collect();
+
+    //    web_sys::console::log_1(&format!("{scopy:#?}").into());
+
+    for tup in scopy.iter() {
+        if tuples_equal(tup, head) {
+            return true;
+        }
     }
     false
 }
